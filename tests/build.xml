@@ -158,7 +158,22 @@
   <!-- ================================================================= -->
   <!-- Run all tests                                                     -->
   <!-- ================================================================= -->  
-  <target name="runAll" depends="regression, longUnit"/>
+  <!-- Sealed build: when the TEST_FILTER environment variable names a single  -->
+  <!-- test target of this file (e.g. SocketServer), run only that target;   -->
+  <!-- otherwise run the full regression + longUnit suite as upstream does.  -->
+  <target name="runAll">
+    <condition property="runAll.selected" value="${env.TEST_FILTER}">
+      <and>
+        <isset property="env.TEST_FILTER"/>
+        <not><equals arg1="${env.TEST_FILTER}" arg2=""/></not>
+      </and>
+    </condition>
+    <property name="runAll.selected" value="runAllTests"/>
+    <echo message="Running test target(s): ${runAll.selected}"/>
+    <antcall target="${runAll.selected}"/>
+  </target>
+
+  <target name="runAllTests" depends="regression, longUnit"/>
 
   <!-- ================================================================= -->
   <!-- Tests multiple parts of log4j. These tests are much more fragile  -->
@@ -366,6 +381,8 @@
   </target>
 
   <target name="ErrorHandler" depends="build">
+    <!-- Same path as XMLLayout/PatternLayout/etc.; avoid stale lines from earlier targets. -->
+    <delete file="output/temp"/>
     <junit printsummary="yes" fork="yes" 
          haltonfailure="${haltonfailure}" dir="${basedir}">
       <classpath refid="tests.classpath"/>

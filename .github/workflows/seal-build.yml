@@ -1,0 +1,79 @@
+name: seal-build
+
+# log4j 1.2.17 ships no CI of its own. This workflow mirrors the release build
+# documented in BUILD-INFO.txt / pom.xml: Maven compiles the 1.4-target classes,
+# the maven-antrun "runAll" execution runs the project's Ant test suite
+# (tests/build.xml regression + longUnit), and the bundle plugin packs the jar.
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Single tests/build.xml test target to run (e.g. SocketServer); empty runs the full suite"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      # The release was built with JDK 1.6 targeting 1.4; JDK 7 is the newest
+      # javac that still accepts the -source/-target 1.1 used by tests/build.xml.
+      # setup-java's zulu resolver no longer lists Java 7, so fetch the last
+      # Zulu 7 build (7u352, which carries TLS 1.2 for Maven Central) directly.
+      - name: Download Zulu JDK 7
+        shell: bash
+        run: curl -fsSL -o /tmp/zulu7.tar.gz https://cdn.azul.com/zulu/bin/zulu7.56.0.11-ca-jdk7.0.352-linux_x64.tar.gz
+
+      - name: Set up JDK 7
+        uses: actions/setup-java@v4
+        with:
+          distribution: jdkfile
+          jdkFile: /tmp/zulu7.tar.gz
+          java-version: "7.0.352"
+          architecture: x64
+
+      # Maven 3.6.3 is the last Maven line that runs on Java 7.
+      - name: Install Maven 3.6.3
+        shell: bash
+        run: |
+          curl -fsSL -o /tmp/maven.tar.gz https://archive.apache.org/dist/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.tar.gz
+          tar -xzf /tmp/maven.tar.gz -C /tmp
+          echo "/tmp/apache-maven-3.6.3/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        shell: bash
+        run: |
+          java -version
+          mvn -v
+
+      - name: Build and test
+        shell: bash
+        run: |
+          TEST_FILTER="${{ inputs.test-filter }}" mvn -B clean verify -Dmaven.site.skip=true 2>&1 | tee build.log
+
+      - name: Test summary
+        if: always()
+        shell: bash
+        run: |
+          if [ ! -f build.log ]; then echo "build.log not produced (build step did not run)"; exit 0; fi
+          awk '/\[junit\] (Testsuite|Tests run):/ { print }' build.log
+          awk '/\[junit\] Tests run:/ {
+                 gsub(",", "");
+                 for (i = 1; i <= NF; i++) {
+                   if ($i == "run:") run += $(i+1);
+                   if ($i == "Failures:") fail += $(i+1);
+                   if ($i == "Errors:") err += $(i+1);
+                 }
+               }
+               END { printf "TOTAL tests run: %d, failures: %d, errors: %d, passed: %d\n", run, fail, err, run - fail - err }' build.log
+
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: log4j-jar
+          path: target/log4j-1.2.17.jar
+          if-no-files-found: error
