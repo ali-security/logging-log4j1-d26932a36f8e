@@ -188,7 +188,8 @@
                                      CyclicBuffer, OR,
                                      LevelMatchFilter, PatternParser, 
                                      ErrorHandler,Rewrite, JNDIUtil,
-									 HardenedObjectInputStream"/>
+									 HardenedObjectInputStream,
+                                     NTEventLogAppenderDllPath"/>
 
   <!-- ================================================================= -->
   <!-- Longer unit tests                                                 -->
@@ -491,6 +492,21 @@
       <classpath refid="tests.classpath"/>
       <formatter type="plain" usefile="false"/>
       <test name="org.apache.log4j.nt.NTEventLogAppenderTest" />
+    </junit>
+  </target>
+
+  <!-- Runs on every platform: plants bogus NTEventLogAppender libraries -->
+  <!-- in a directory on java.library.path (sonatype-2010-0053).          -->
+  <target name="NTEventLogAppenderDllPath" depends="build">
+    <delete dir="./output/ntdll-planted"/>
+    <mkdir dir="./output/ntdll-planted"/>
+    <junit printsummary="yes" fork="yes"
+        haltonfailure="${haltonfailure}" dir="${basedir}">
+      <classpath refid="tests.classpath"/>
+      <sysproperty key="java.library.path" file="./output/ntdll-planted"/>
+      <sysproperty key="log4j.test.nteventlog.plant.dir" file="./output/ntdll-planted"/>
+      <formatter type="plain" usefile="false"/>
+      <test name="org.apache.log4j.nt.NTEventLogAppenderDllPathTest" />
     </junit>
   </target>
 
